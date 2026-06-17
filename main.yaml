@@ -1,0 +1,67 @@
+name: RDP 6 Jam Tailscale
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Setup User & Enable RDP
+        run: |
+          net user drodo Baksomemek88 /add
+          net localgroup administrators drodo /add
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+          Write-Host "RDP berhasil diaktifkan."
+
+      - name: Download & Install Tailscale
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          $msiUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.76.3-amd64.msi"
+          Write-Host "Mendownload Tailscale 1.76.3..."
+          Invoke-WebRequest -Uri $msiUrl -OutFile "tailscale.msi"
+          Start-Process msiexec.exe -Wait -ArgumentList '/I tailscale.msi /quiet /qn'
+          Start-Sleep -Seconds 15
+          Write-Host "Tailscale berhasil diinstal."
+
+      - name: Join Tailscale Network
+        run: |
+          $tailscale = "C:\Program Files\Tailscale\tailscale.exe"
+          if (Test-Path $tailscale) {
+            & $tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --hostname="github-rdp" --accept-routes --unattended
+            Write-Host "Berhasil join Tailscale!"
+          } else {
+            Write-Error "tailscale.exe tidak ditemukan!"
+            exit 1
+          }
+
+      - name: Cek Status & IP Tailscale
+        run: |
+          Start-Sleep -Seconds 10
+          $tailscale = "C:\Program Files\Tailscale\tailscale.exe"
+          if (Test-Path $tailscale) {
+            Write-Host "=== STATUS TAILSCALE ==="
+            & $tailscale status
+            Write-Host "=== IP TAILSCALE ==="
+            & $tailscale ip
+          }
+
+      - name: Ping Google di Background
+        run: |
+          Start-Job -ScriptBlock { while($true) { ping -n 1 8.8.8.8 | Out-Null; Start-Sleep -Seconds 10 } }
+          Write-Host "Background ping aktif."
+
+      - name: Keep Alive
+        run: |
+          Write-Host "==============================="
+          Write-Host "RDP AKTIF!"
+          Write-Host "User    : drodo"
+          Write-Host "Password: Baksomemek88"
+          Write-Host "Cek log step 'Cek Status & IP Tailscale' untuk IP mesin ini."
+          Write-Host "Gunakan IP tersebut di aplikasi RDP kamu."
+          Write-Host "==============================="
+          Start-Sleep -Seconds 21500
